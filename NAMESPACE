@@ -1,0 +1,39 @@
+
+
+importFrom(methods,
+    as,
+    callNextMethod,
+    extends,
+    getClass,
+    getClassDef,
+    getPackageName,
+    initialize,
+    is,
+    isVirtualClass,
+    makeClassRepresentation,
+    new,
+    packageSlot,
+    "packageSlot<-",
+    possibleExtends,
+    setClass,
+    setLoadAction,
+    show)
+
+
+export(IrisClassDef,
+       IrisFieldDef,
+       IrisMethodDef,
+       IrisPropertyDef,
+       IrisObject,
+       setIrisClass,
+       field, method, property)
+
+
+S3method(print   , "iris::method")
+S3method("$"     , "iris::object")
+S3method("$<-"   , "iris::object")
+S3method("[["    , "iris::object")
+S3method("[[<-"  , "iris::object")
+S3method(print   , "iris::object")
+S3method(names   , "iris::object")
+S3method(toString, "iris::object")

@@ -1,0 +1,13 @@
+Package: iris
+Version: 0.1.0
+License: MIT + file LICENSE
+Title: What the Package Does (Title Case)
+Description: More about what it does (maybe more than one line)
+    Use four spaces when indenting paragraphs within the Description.
+Author: Andrew Simmons
+Maintainer: Andrew Simmons <akwsimmo@gmail.com>
+Imports: methods
+Encoding: UTF-8
+NeedsCompilation: no
+Packaged: 2022-06-14 07:19:21 UTC; andre
+Built: R 4.2.0; ; 2022-06-14 07:19:40 UTC; windows

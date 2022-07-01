@@ -1,0 +1,204 @@
+library(iris)
+
+
+testClass1 <- setIrisClass(
+    Class = "testClass1",
+    members = list(
+        field(name = ".a", value = 0:4),
+        field(class = "numeric", name = "a", value = 5:9),
+        method(name = "testing_field", value = function(.self) {
+            cat("> .self$.a\n")
+            print(.self$.a)
+            cat("\n")
+
+
+            cat('> .self[[".a"]]\n')
+            print(.self[[".a"]])
+            cat("\n")
+
+
+            cat('> .self$field(".a")\n')
+            print(.self$field(".a"))
+        }),
+        method(access = "protected", name = "initialize", value = function(.self, .a, a, ...) {
+            # .self$super$initialize(...)
+            if (!missing(.a))
+                .self$.a <- .a
+            if (!missing(a))
+                .self$a <- a
+        }),
+        method(name = "static_fun", value = function(...) {
+            list(...)
+        }),
+        method(name = "print", value = function(.self, ...) {
+            .self$.print()
+        }),
+        method(name = ".print", value = function(.self, ...) {
+            print(.self)
+        }),
+        method(access = "protected", name = "protected_fun", value = function(.self, ...) {
+            cat("in method 'protected_fun' of class 'testClass1'\n")
+            invisible(.self)
+        }),
+        method(name = "setPackageSlot", value = function(.self, value) {
+            cat("in method 'setPackageSlot' of class 'testClass1'\n")
+            .self$.a <- "test"
+            packageSlot(.self$.a) <- value
+            names(packageSlot(.self$.a)) <- NULL
+            invisible()
+        })
+     )
+)
+
+
+testClass2 <- setIrisClass(
+    Class = "testClass2", contains = testClass1,
+    members = list(
+        field(name = "letters", value = letters),
+        method(access = "protected", name = "initialize", value = function(.self, ...) {
+            cat("in 'initialize' of 'testClass2'\n")
+            .self$super$initialize(...)
+        })
+    )
+)
+
+
+testClass3 <- setIrisClass(
+    Class = "testClass3",
+    members = list(
+        field(final = TRUE , className = "ANY"    , name = "x1", value = pi),
+        field(final = TRUE , className = "numeric", name = "x2", value = pi),
+        field(final = FALSE, className = "ANY"    , name = "x3", value = pi),
+        field(final = FALSE, className = "numeric", name = "x4", value = pi),
+        field(final = TRUE , className = "numeric", name = "x5")
+    )
+)
+
+
+obj <- testClass1$new(.a = data.frame(), a = pi)
+obj2 <- testClass2$new()
+
+
+# iris:::getWithoutCheck(".a", obj)
+# iris:::getWithoutCheck("a" , obj)
+# iris:::getWithoutCheck(".a", obj2)
+# iris:::getWithoutCheck("a" , obj2)
+
+
+obj$testing_field()
+
+
+obj
+obj$print
+obj$print()
+obj$.print
+obj$protected_fun
+
+
+obj$a
+obj$.a
+obj$a <- 7
+
+
+obj3 <- testClass3$new()
+
+
+testClass4 <- setIrisClass(
+    "testClass4",
+    members = list(
+        method(access = "protected", name = "initialize", value = function(.self, ...) {
+            cat("in 'initialize' of ")
+            print(.self)
+        }),
+        method(access = "public", name = "validate", value = function(.self) {
+            cat("in 'validate' of ")
+            print(.self)
+        }),
+        method(access = "private", name = "finalize", value = function(.self, e) {
+            cat("in 'finalize' of ")
+            print(.self)
+        })
+    )
+)
+
+
+obj4 <- testClass4$new()
+rm(obj4)
+invisible(gc())
+
+
+
+
+
+testClass5 <- setIrisClass(
+    "testClass5",
+    members = list(
+        field(name = ".a", value = 1),
+        property(name = "a", value = function(.self, value) {
+            if (missing(value)) {
+                cat("getter for 'a' for ")
+                print(.self)
+                .self$.a
+            } else {
+                cat("setter for 'a' for ")
+                print(.self)
+                .self$.a <- value
+            }
+        })
+    )
+)
+
+
+obj5 <- testClass5$new()
+obj5$a
+obj5$a <- 5
+obj5$a
+
+
+
+
+
+testClass6 <- setIrisClass(
+    "testClass6",
+    members = list(
+        field(name = ".x", value = NULL),
+        property(access = "private", name = "x", value = function(.self, value) {
+            print("here")
+        }),
+        method(access = "protected", name = "initialize", value = function(.self, x, ...) {
+            .self$x <- x
+        })
+    )
+)
+
+
+obj6 <- testClass6$new(x = 5)
+
+
+
+
+
+testClass7 <- setIrisClass(
+    "testClass7",
+    members = list(
+        method(name = "test", value = function(.self, ...) {
+            cat("here\n")
+            print(.self)
+        })
+    )
+)
+
+
+testClass8 <- setIrisClass(
+    "testClass8", contains = testClass7,
+    members = list(
+        method(name = "test", value = function(.self, ...) {
+            .self$super$test(...)
+            super$test(...)
+        })
+    )
+)
+
+
+obj8 <- testClass8$new()
+obj8$test()
