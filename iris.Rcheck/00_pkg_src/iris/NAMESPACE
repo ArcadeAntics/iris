@@ -1,5 +1,38 @@
 
 
+# imports for "envRefClass" ----
+
+
+# importFrom(methods,
+#
+#     # copy:
+#     new,
+#
+#     # export:
+#     getClass,
+#     new,
+#     as,
+#
+#     # import:
+#     getClass,
+#     is,
+#
+#     # initFields:
+#     initRefFields,
+#
+#     # show:
+#     classLabel,
+#
+#     # trace:
+#     .TraceWithMethods,
+#
+#     # untrace:
+#     .TraceWithMethods)
+
+
+# other imports             ----
+
+
 importFrom(methods,
     as,
     callNextMethod,
@@ -10,29 +43,40 @@ importFrom(methods,
     initialize,
     is,
     isVirtualClass,
+    makeClassRepresentation,
     new,
     packageSlot,
-    "packageSlot<-",
     possibleExtends,
     setClass,
+    setLoadAction,
     show)
 
 
-export(as.irisFieldDef,
-       as.irisFieldDef_or_irisPropertyDef,
-       as.irisMethodDef,
-       irisClassDef,
-       irisFieldDef,
-       irisMethodDef,
-       irisPropertyDef,
-       irisRefClass,
-       setIrisClass)
+# exports                   ----
 
 
-S3method(print , "iris::irisMethod"  )
-S3method("$"   , "iris::irisRefClass")
-S3method("$<-" , "iris::irisRefClass")
-S3method("[["  , "iris::irisRefClass")
-S3method("[[<-", "iris::irisRefClass")
-S3method(print , "iris::irisRefClass")
-S3method(names , "iris::irisRefClass")
+export(setIrisClass, field, method, property)
+
+
+exportClasses("iris::FieldDef",
+              "iris::MethodDef",
+              "iris::PropertyDef",
+              "iris::object",
+              "iris::class")
+
+
+exportMethods(initialize, show)
+
+
+S3method(print   , "iris::method")
+
+
+S3method("$"     , "iris::object")
+S3method("$<-"   , "iris::object")
+S3method("[["    , "iris::object")
+S3method("[[<-"  , "iris::object")
+S3method(print   , "iris::object")
+S3method(toString, "iris::object")
+
+
+S3method(print   , "iris::class" )

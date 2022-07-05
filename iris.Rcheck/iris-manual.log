@@ -1,7 +1,7 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.22 (MiKTeX 21.2) (preloaded format=pdflatex 2021.3.18)  14 JUN 2022 03:19
+This is pdfTeX, Version 3.141592653-2.6-1.40.22 (MiKTeX 21.2) (preloaded format=pdflatex 2021.3.18)  4 JUL 2022 23:39
 entering extended mode
-**C:/Users/andre/AppData/Local/Temp/RtmpOI2HQv/Rd2pdfa674665f3305/Rd2.tex
-(C:/Users/andre/AppData/Local/Temp/RtmpOI2HQv/Rd2pdfa674665f3305/Rd2.tex
+**C:/Users/andre/AppData/Local/Temp/RtmpcDh0VW/Rd2pdf61b41f804d72/Rd2.tex
+(C:/Users/andre/AppData/Local/Temp/RtmpcDh0VW/Rd2pdf61b41f804d72/Rd2.tex
 LaTeX2e <2020-10-01> patch level 4
 L3 programming layer <2021-02-18> xparse <2020-03-03>
 (C:\Users\andre\AppData\Local\Programs\MiKTeX\tex/latex/base\book.cls
@@ -333,51 +333,79 @@ LaTeX Info: Redefining \nameref on input line 8.
 \@outlinefile=\write4
 \openout4 = `Rd2.out'.
 
-LaTeX Font Info:    Trying to load font information for T1+zi4 on input line 24
+LaTeX Font Info:    Trying to load font information for T1+zi4 on input line 23
 .
 
 (C:\Users\andre\AppData\Local\Programs\MiKTeX\tex/latex/inconsolata\t1zi4.fd
 File: t1zi4.fd 2018/01/14 T1/zi4 (Inconsolata)
 )
 LaTeX Font Info:    Font shape `T1/zi4/m/n' will be
-(Font)              scaled to size 10.0pt on input line 24.
-LaTeX Font Info:    Trying to load font information for T1+phv on input line 29
+(Font)              scaled to size 10.0pt on input line 23.
+LaTeX Font Info:    Trying to load font information for T1+phv on input line 28
 .
 
 (C:\Users\andre\AppData\Local\Programs\MiKTeX\tex/latex/psnfss\t1phv.fd
 File: t1phv.fd 2020/03/25 scalable font definitions for T1/phv.
 )
-(Rd2.toc)
+(Rd2.toc
+LaTeX Font Info:    External font `cmex10' loaded for size
+(Font)              <7> on input line 1.
+LaTeX Font Info:    External font `cmex10' loaded for size
+(Font)              <5> on input line 1.
+)
 \tf@toc=\write5
 \openout5 = `Rd2.toc'.
 
-
-No file Rd2.ind.
-[1
+ [1
 
 
-{C:/Users/andre/AppData/Local/MiKTeX/pdftex/config/pdftex.map}] (Rd2.aux)
+{C:/Users/andre/AppData/Local/MiKTeX/pdftex/config/pdftex.map}]
+(Rd2.ind [2]
+
+LaTeX Font Warning: Font shape `T1/zi4/m/it' undefined
+(Font)              using `T1/zi4/m/n' instead on input line 3.
+
+LaTeX Font Info:    Font shape `T1/zi4/m/it' will be
+(Font)              scaled to size 10.0pt on input line 8.
+[3
+
+
+]) (Rd2.aux)
+
+LaTeX Font Warning: Some font shapes were not available, defaults substituted.
+
 Package rerunfilecheck Info: File `Rd2.out' has not changed.
-(rerunfilecheck)             Checksum: D41D8CD98F00B204E9800998ECF8427E;0.
+(rerunfilecheck)             Checksum: 3BD3AD76CC0E97A6F90F39B5C4961EF1;142.
  ) 
 Here is how much of TeX's memory you used:
- 8536 strings out of 479334
- 126499 string characters out of 2857084
- 419065 words of memory out of 3000000
- 25864 multiletter control sequences out of 15000+200000
- 426228 words of font info for 44 fonts, out of 3000000 for 9000
+ 8587 strings out of 479334
+ 127075 string characters out of 2857084
+ 425076 words of memory out of 3000000
+ 25882 multiletter control sequences out of 15000+200000
+ 435727 words of font info for 58 fonts, out of 3000000 for 9000
  1141 hyphenation exceptions out of 8191
- 88i,5n,90p,279b,324s stack positions out of 5000i,500n,10000p,200000b,50000s
-{C:/Users/andre/AppData/Local/Programs/MiKTeX/fonts/enc/dvips/base/8r.enc}{C:
-/Users/andre/AppData/Local/Programs/MiKTeX/fonts/enc/dvips/inconsolata/i4-t1-0.
-enc}<C:/Users/andre/AppData/Local/Programs/MiKTeX/fonts/type1/public/inconsolat
-a/Inconsolata-zi4r.pfb><C:/Users/andre/AppData/Local/Programs/MiKTeX/fonts/type
-1/urw/helvetic/uhvr8a.pfb><C:/Users/andre/AppData/Local/Programs/MiKTeX/fonts/t
-ype1/urw/times/utmb8a.pfb><C:/Users/andre/AppData/Local/Programs/MiKTeX/fonts/t
-ype1/urw/times/utmr8a.pfb>
-Output written on Rd2.pdf (1 page, 43208 bytes).
+ 88i,5n,90p,279b,505s stack positions out of 5000i,500n,10000p,200000b,50000s
+pdfTeX warning (dest): name{Rfn.packageSlot} has been referenced but does not
+ exist, replaced by a fixed one
+
+pdfTeX warning (dest): name{Rfn.setClass} has been referenced but does not exis
+t, replaced by a fixed one
+
+pdfTeX warning (dest): name{Rfn.setIrisClass} has been referenced but does not 
+exist, replaced by a fixed one
+
+{C:/Users/andre/AppData/Local/Programs/MiKTeX/fonts/enc/dvips/base/8r.enc}{C:/U
+sers/andre/AppData/Local/Programs/MiKTeX/fonts/enc/dvips/inconsolata/i4-t1-0.en
+c}<C:/Users/andre/AppData/Local/Programs/MiKTeX/fonts/type1/public/inconsolata/
+Inconsolata-zi4r.pfb><C:/Users/andre/AppData/Local/Programs/MiKTeX/fonts/type1/
+urw/helvetic/uhvr8a.pfb><C:/Users/andre/AppData/Local/Programs/MiKTeX/fonts/typ
+e1/urw/times/utmb8a.pfb><C:/Users/andre/AppData/Local/Programs/MiKTeX/fonts/typ
+e1/urw/times/utmr8a.pfb><C:/Users/andre/AppData/Local/Programs/MiKTeX/fonts/typ
+e1/urw/times/utmr8a.pfb><C:/Users/andre/AppData/Local/Programs/MiKTeX/fonts/typ
+e1/urw/times/utmri8a.pfb>
+Output written on Rd2.pdf (3 pages, 75899 bytes).
 PDF statistics:
- 31 PDF objects out of 1000 (max. 8388607)
- 4 named destinations out of 1000 (max. 500000)
- 1 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 84 PDF objects out of 1000 (max. 8388607)
+ 21 named destinations out of 1000 (max. 500000)
+ 17 words of extra memory for PDF output out of 10000 (max. 10000000)
 

@@ -1,10 +1,14 @@
-R.preserves.active.bindings <- TRUE
+R.preserves.active.bindings <- FALSE
 
 
 options(keep.source = FALSE)
 
 
 this.namespace <- environment()
+
+
+as.className <- function (Class, where = topenv(parent.frame()))
+paste0(getPackageName(where), "::", as.symbol(Class))
 
 
 # bquote2 <- function (expr, where = parent.frame(), splice = FALSE)
@@ -94,7 +98,7 @@ new(.(`packageSlot<-`("activeBindingFunction", "methods")), x)
 
 
 IrisFieldDef <- setClass(
-    Class = paste0(.packageName, "::", "FieldDef"),
+    Class = as.className("FieldDef"),
     slots = list(
         access    = "character",
         static    = "logical"  ,
@@ -104,15 +108,21 @@ IrisFieldDef <- setClass(
         value     = `packageSlot<-`("ANY", "methods"),
         hasValue  = "logical"
     ),
-    sealed = TRUE
+    sealed = FALSE  # in setClass
 )
-body(IrisFieldDef@.Data) <- bquote(new(Class = .(IrisFieldDef@className), ...))
+IrisFieldDef@.Data <- eval(bquote2(
+function (access = NA, static = FALSE, final = FALSE, className = .(`packageSlot<-`("ANY", "methods")),
+    name, value, where = topenv(parent.frame()), ...)
+new(Class = .(IrisFieldDef@className), access = access, static = static,
+    final = final, className = className, name = name, value = value,
+    where = where, ...)
+))
 
 
 setMethod(initialize, IrisFieldDef@className, eval(bquote(
 function (.Object, access = NA, static = FALSE, final = FALSE,
     className = .(`packageSlot<-`("ANY", "methods")), name, value,
-    where = topenv(parent.frame(4)), ...)
+    where = topenv(parent.frame(3)), ...)
 {
     .Object <- callNextMethod(.Object = .Object, ...)
 
@@ -125,7 +135,7 @@ function (.Object, access = NA, static = FALSE, final = FALSE,
     access <- as.character(access)[[1L]]
     if (is.na(access))
         access <- if (startsWith(name, ".")) "private" else "public"
-    else access <- match.arg(access, c("private", "public", "protected"))
+    else access <- match.arg(access, c("public", "private", "protected"))
 
 
     sstatic <- as.character(static)[[1L]]
@@ -150,7 +160,8 @@ function (.Object, access = NA, static = FALSE, final = FALSE,
     className <- classDef@className
 
 
-    if (hasValue <- !missing(value)) {
+    # if (hasValue <- !missing(value)) {
+    if (hasValue <- !identical(environment()$value, quote(expr = ))) {
 
 
         # taken from 'methods::checkSlotAssignment' and 'methods::checkAtAssignment'
@@ -213,20 +224,26 @@ function (object)
 
 
 IrisMethodDef <- setClass(
-    Class = paste0(.packageName, "::", "MethodDef"),
+    Class = as.className("MethodDef"),
     slots = list(
         access = "character",
         static = "logical"  ,
+        final  = "logical"  ,
         name   = "character",
         value  = "function"
     ),
-    sealed = TRUE
+    sealed = FALSE  # in setClass
 )
-body(IrisMethodDef@.Data) <- bquote(new(Class = .(IrisMethodDef@className), ...))
+IrisMethodDef@.Data <- eval(bquote2(
+function (access = NA, static = NA, final = FALSE, name, value,
+    ...)
+new(Class = .(IrisMethodDef@className), access = access, static = static,
+    final = final, name = name, value = value, ...)
+))
 
 
 setMethod(initialize, IrisMethodDef@className,
-function (.Object, access = NA, static = NA, name, value, ...)
+function (.Object, access = NA, static = NA, final = FALSE, name, value, ...)
 {
     .Object <- callNextMethod(.Object = .Object, ...)
 
@@ -234,15 +251,16 @@ function (.Object, access = NA, static = NA, name, value, ...)
     name <- as.character(as.symbol(name))
     if (name == "super")
         stop("invalid 'name'; \"super\" is a reserved name")
+
+
     if (!is.function(value))
-        value <- as.function(value)
+        stop("invalid 'value'; must be a function")
 
 
     access <- as.character(access)[[1L]]
     if (is.na(access))
         access <- if (startsWith(name, ".")) "private" else "public"
-    if (!(access %in% c("private", "public", "protected")))
-        stop("invalid 'access'")
+    else access <- match.arg(access, c("public", "private", "protected"))
 
 
     sstatic <- as.character(static)[[1L]]
@@ -262,8 +280,17 @@ function (.Object, access = NA, static = NA, name, value, ...)
     }
 
 
+    sfinal <- as.character(final)[[1L]]
+    final <- if (!is.na(sfinal) && sfinal %in% c("final", "const"))
+        TRUE
+    else if (final)
+        TRUE
+    else FALSE
+
+
     .Object@access <- access
     .Object@static <- static
+    .Object@final  <- final
     .Object@name   <- name
     .Object@value  <- value
 
@@ -292,28 +319,36 @@ function (object)
 
 
 IrisPropertyDef <- setClass(
-    Class = paste0(.packageName, "::", "PropertyDef"),
+    Class = as.className("PropertyDef"),
     contains = IrisMethodDef@className,
-    sealed = TRUE
+    sealed = FALSE  # in setClass
 )
-body(IrisPropertyDef@.Data) <- bquote(new(Class = .(IrisPropertyDef@className), ...))
+IrisPropertyDef@.Data <- eval(bquote2(
+function (access = NA, static = NA, final = FALSE, name, value,
+    ...)
+new(Class = .(IrisPropertyDef@className), access = access, static = static,
+    final = final, name = name, value = value, ...)
+))
 
 
 # MemberDef           ----
 
 
-IrisMemberDef <- setClassUnion("MemberDef", c(
-    IrisFieldDef@className,
-    IrisMethodDef@className,
-    IrisPropertyDef@className
-))
+IrisMemberDef <- setClassUnion(
+    name = as.className("MemberDef"),
+    members = c(
+        IrisFieldDef   @className,
+        IrisMethodDef  @className,
+        IrisPropertyDef@className
+    )
+)
 
 
 # method              ----
 
 
 IrisMethod <- setClass(
-    Class = paste0(.packageName, "::", "method"),
+    Class = as.className("method"),
     contains = "function",
     slots = list(
         access = "character",
@@ -325,7 +360,7 @@ IrisMethod <- setClass(
         is.property = "logical",
         boundTo     = `packageSlot<-`("ANY", "methods")
     ),
-    sealed = TRUE
+    sealed = FALSE  # in setClass
 )
 body(IrisMethod@.Data) <- bquote(new(Class = .(IrisMethod@className), ...))
 
@@ -403,9 +438,10 @@ function (x, ...)
 
 
 IrisClassRepresentation <- setClass(
-    Class = paste0(.packageName, "::", "ClassRepresentation"),
+    Class = as.className("ClassRepresentation"),
     contains = `packageSlot<-`("classRepresentation", "methods"),
     slots = list(
+        extends = "character",
         fields  = "list",
         methods = "list"
     )
@@ -416,75 +452,18 @@ body(IrisClassRepresentation@.Data) <- bquote(new(Class = .(IrisClassRepresentat
 # class               ----
 
 
-IrisClassDef <- setClass(
-    Class = paste0(.packageName, "::", "class"),
-    contains = "environment",
-    slots = list(
-        className = "character",
-        fields    = "list"     ,
-        extends   = "character",
-        methods   = "list"
-    ),
-    sealed = TRUE
-)
-body(IrisClassDef@.Data) <- bquote(new(Class = .(IrisClassDef@className), ...))
-
-
-.irisClassTable <- new.env(parent = emptyenv())
-
-
-irisClassGeneratorFunction <- function (className)
-{
-    generator <- function(...) NULL
-    body(generator) <- substitute({
-        .Object <- new(CLASS)
-        if (exists("initialize", envir = .Object, inherits = FALSE)) {
-            initialize <- .getWithoutCheck("initialize", .Object)
-            if (is(initialize, IrisMethod.className) && !initialize@static)
-                initialize(...)
-        }
-        tmp <- .Object
-        while (!identical(tmp, emptyenv())) {
-            if (exists("finalize", envir = tmp, inherits = FALSE)) {
-                finalize <- .getWithoutCheck("finalize", tmp)
-                if (is(finalize, IrisMethod.className) && !finalize@static)
-                    reg.finalizer(tmp, finalize, onexit = TRUE)
-            }
-            tmp <- parent.env(tmp)
-        }
-        if (exists("validate", envir = .Object, inherits = FALSE)) {
-            validate <- .getWithoutCheck("validate", .Object)
-            if (is(validate, IrisMethod.className) && !validate@static)
-                validate()
-        }
-        .Object
-    }, list(
-        CLASS = className,
-        IrisMethod.className = IrisMethod@className
-    ))
-    environment(generator) <- this.namespace
-    return(generator)
-}
-
-
-init.IrisClassDef <- function (baseCase)
+.setClassPortion <- function (baseCase)
 {
     eval(bquote2(
-function (.Object, className, members = list(), contains = character(),
-    where = topenv(parent.frame(4)), validity = NULL, sealed = FALSE,
+function (Class, members = list(), contains = .(if (baseCase) "environment" else attr(IrisObject, "className")),
+    where = topenv(parent.frame()), validity = NULL, sealed = FALSE,
     ...)
 {
-    .Object <- callNextMethod(.Object = .Object, ...)
-
-
-    className <- as.character(className)[[1L]]
-    if (is.na(className) || className == "")
-        stop("invalid 'className'")
-    className <- paste0(getPackageName(where), "::", className)
+    Class <- as.className(Class, where)
 
 
     members <- lapply(members, function(xx) {
-        if (!is(xx, IrisMemberDef@className))
+        if (!is(xx, .(IrisMemberDef@className)))
             stop("invalid 'members', must be a list of field, method, and property definitions")
         xx
     })
@@ -497,150 +476,153 @@ function (.Object, className, members = list(), contains = character(),
 ..(
 if (baseCase) quote({
     contains <- "environment"
+    extends <- c(Class, "environment")
 }) else bquote({
-    if (identical(contains, character()))
-        contains <- .(IrisObject@className)
-    contains <- getClass(contains, where = where)@className
-    if (!extends(contains, .(IrisObject@className)))
-        stop("invalid 'contains', ", dQuote(contains), " is not a subclass of ", dQuote(.(IrisObject@className)))
+    def <- getClass(contains, where = where)
+    if (!is(def, .(IrisClassRepresentation@className)))
+        stop("invalid 'contains', must be a subclass of ", dQuote(.(attr(IrisObject, "className"))))
+    contains <- def@className
+    extends <- c(Class, def@extends)
 })
 )
 
 
-    is.method <- vapply(members, is, IrisMethodDef@className, FUN.VALUE = NA)
-    methods <- members[is.method]
+    is.method <- vapply(members, is, .(IrisMethodDef@className), FUN.VALUE = NA)
     fields <- members[!is.method]
+    methods <- members[is.method]
 
 
-    rep <- makeClassRepresentation(name = className, superClasses = contains,
+    rep <- makeClassRepresentation(name = Class, superClasses = contains,
         package = getPackageName(where = where), validity = validity,
         sealed = sealed, where = where)
-    rep <- IrisClassRepresentation(rep, fields = fields, methods = methods)
-    className <- setClass(Class = rep@className, representation = rep,
-        where = where)@className
-
-
-..(
-if (baseCase) quote({
-    extends <- c(className, "environment")
-}) else bquote({
-    extends <- extends(className)
-    i <- match(.(IrisObject@className), extends)
-    if (is.na(i))
-        stop("internal error; should never happen, please report!")
-    extends <- c(extends[seq_len(i)], "environment")
-})
-)
-
-
-    selfEnv <- new.env(parent = emptyenv())
-    .Object@.xData    <- selfEnv
-    .Object@className <- className
-    .Object@fields    <- fields
-    .Object@extends   <- extends
-    .Object@methods   <- methods
-    selfEnv$new <- irisClassGeneratorFunction(className)
-    lockEnvironment(selfEnv, bindings = TRUE)
-
-
-    assign(className, .Object, .irisClassTable)
-
-
-..(
-if (!baseCase) quote({
-    action <- function(ns) NULL
-    body(action) <- substitute({
-        parent.env(selfEnv) <- get(contains, .irisClassTable)
-        assign(className, .Object, .irisClassTable)
-    }, list(
-        className = className,
-        contains = contains
-    ))
-    environment(action) <- list2env(list(.Object = .Object, selfEnv = selfEnv), parent = this.namespace)
-    lockEnvironment(environment(action), bindings = TRUE)
-    setLoadAction(action, paste0(".", className, ".fixup"), where = where)
-})
-)
-
-
-..(
-if (!baseCase) quote({
-    hook <- function(ns) NULL
-    body(hook) <- substitute({
-        parent.env(selfEnv) <- get(contains, .irisClassTable)
-        assign(className, .Object, .irisClassTable)
-    }, list(
-        className = className,
-        contains = contains
-    ))
-    environment(action) <- list2env(list(.Object = .Object, selfEnv = selfEnv), parent = this.namespace)
-    lockEnvironment(environment(action), bindings = TRUE)
-    setLoadAction(action, paste0(".", className, ".fixup"), where = where)
-})
-)
-
-
-    .Object
+    rep <- IrisClassRepresentation(rep, extends = extends, fields = fields,
+        methods = methods)
+    setClass(Class = rep@className, representation = rep, where = where)
 }
     ), parent.frame())
 }
 
 
-setMethod(initialize, IrisClassDef@className,
-init.IrisClassDef(baseCase = TRUE))
+setClassPortion <- .setClassPortion(TRUE)
 
 
-setIrisClass <- eval(bquote2(
-function (Class, members = list(), contains = character(), where = topenv(parent.frame()),
-    validity = NULL, sealed = FALSE)
-new(Class = .(IrisClassDef@className), className = Class, members = members,
-    contains = contains, where = where, validity = validity,
-    sealed = sealed)
+who.called <- eval(bquote2(
+function ()
+{
+..(
+if (R.preserves.active.bindings) quote({
+    if ((n <- sys.parents()[[sys.nframe()]] - 1L) > 0L)
+        get("envir", envir = sys.frame(n), mode = "environment", inherits = FALSE)
+    else stop("'who.called' used in an inappropriate fashion")
+})
+else quote({
+    if ((n <- sys.parents()[[sys.nframe()]] - 2L) > 0L)
+        get("x", envir = sys.frame(n), mode = "environment", inherits = FALSE)
+    else stop("'who.called' used in an inappropriate fashion")
+})
+)
+}
 ))
 
 
-setMethod(show, IrisClassDef@className,
-function (object)
-{
-    # object <- get(IrisObject@className, iris:::.irisClassTable, inherits = FALSE)
+# who.called <- function ()
+# {
+#     # N <- sys.nframe()
+#     # nseq <- N - seq_len(N - 1L)
+#     # calls <- sys.calls()
+#     # frames <- sys.frames()
+#     # functions <- lapply(nseq, sys.function)
+#     # parents <- sys.parents()
+#     # print(parents)
+#     # cat("\n\n")
+#     # l <- lapply(nseq, function(n) {
+#     #     list(
+#     #         call = calls[[n]],
+#     #         frame = frames[[n]],
+#     #         names = names(frames[[n]]),
+#     #         `function` = functions[[n]]
+#     #     )
+#     # })
+#     # names(l) <- nseq - N
+#     # print(l)
+#     # for (n in nseq) {
+#     #     print()
+#     #     # print(calls[[n]])
+#     #     # print(frames[[n]])
+#     #     # print(names(frames[[n]]))
+#     #     # print(functions[[n]])
+#     #     cat("\n\n")
+#     # }
+#     # print(lapply(parents - 1L, function(i) if (i > 0) calls[[i]]))
+#     # cat("\n\n")
+#     # print(lapply(parents - 1L, function(i) if (i > 0) functions[[i]]))
+#     # cat("\n\n")
+#     # for (n in sys.parents()[[sys.nframe()]] - seq_len(N - 1L)) {
+#     #     # print(calls[[n]])
+#     #     # print(frames[[n]])
+#     #     print(names(frames[[n]]))
+#     #     # print(functions[[n]])
+#     #     cat("\n\n")
+#     # }
+#     # for (n in nseq) {
+#     #     cat(sprintf("sys.function(sys.parents()[[sys.nframe() - %d]]) = ", n))
+#     #     fun <- sys.function(parents[[N - n]])
+#     #     print(fun)
+#     #     cat("\n\n\n\n\n")
+#     # }
+#
+#     # print(names(parent.frame(1)))
+#     # print(names(parent.frame(2)))
+#     # print(names(parent.frame(3)))
+#
+# }
 
 
-    cat("<iris class ", encodeString(object@className, quote = "\""), ">\n", sep = "")
-    fields <- object@fields
-    if (length(fields) > 0L) {
-
-    } else cat("No fields defined\n\n")
-    methods <- object@methods
-    if (length(methods)) {
-        .printNames("Methods", names(methods))
-    } else cat("No class methods\n\n")
+IrisClass.className <- as.className("class")
+.IrisObject.className <- "object"
+IrisObject.className <- as.className(.IrisObject.className)
 
 
-})
-
-
-# object              ----
-
-
-get.envir.code <- if (R.preserves.active.bindings) quote({
-    envir <- get("envir", envir = sys.frame(-1L), mode = "environment", inherits = FALSE)
-}) else quote({
-    envir <- get(".Object", envir = environment(sys.function(-1L)), mode = "environment", inherits = FALSE)
-})
-
-
-IrisObject <- setIrisClass(
-    Class = "object",
+IrisObject <- setClassPortion(
+    Class = .IrisObject.className,
     members = list(
-        IrisMethodDef(access = "public", name = ".IrisClassDef" , value = as.activeBindingFunction(eval(bquote2(function(.self) {
-            ..(get.envir.code)
-            getIrisClass(envir)
+        IrisMethodDef  (                   name = "new"           , value = as.activeBindingFunction(eval(bquote2(function() {
+            envir <- who.called()
+            if (is(envir, .(IrisClass.className)))
+                Class <- attr(envir, "className")
+            else Class <- class(envir)
+            function(...) {
+                .Object <- new(Class)
+                if (exists("initialize", envir = .Object, inherits = FALSE)) {
+                    initialize <- .getWithoutCheck("initialize", .Object)
+                    if (is(initialize, .(IrisMethod@className)) && !initialize@static)
+                        initialize(...)
+                }
+                tmp <- .Object
+                while (!identical(tmp, emptyenv())) {
+                    if (exists("finalize", envir = tmp, inherits = FALSE)) {
+                        finalize <- .getWithoutCheck("finalize", tmp)
+                        if (is(finalize, .(IrisMethod@className)) && !finalize@static)
+                            reg.finalizer(tmp, finalize, onexit = TRUE)
+                    }
+                    tmp <- parent.env(tmp)
+                }
+                if (exists("validate", envir = .Object, inherits = FALSE)) {
+                    validate <- .getWithoutCheck("validate", .Object)
+                    if (is(validate, .(IrisMethod@className)) && !validate@static)
+                        validate()
+                }
+                .Object
+            }
         })))),
-        IrisMethodDef(access = "public", name = ".objectPackage", value = as.activeBindingFunction(eval(bquote2(function(.self) {
-            ..(get.envir.code)
-            getClass(class(envir))@package
-        })))),
-        IrisMethodDef(                   name = "copy"          , value = as.activeBindingFunction(eval(bquote2(function(.self) {
+
+
+        IrisPropertyDef(access = "public", name = ".classDef"     , value = function(.self) getClass(class(who.called()))        ),
+        IrisPropertyDef(access = "public", name = ".irisClassDef" , value = function(.self) getIrisClass(who.called())           ),
+        IrisPropertyDef(access = "public", name = ".objectPackage", value = function(.self) getClass(class(who.called()))@package),
+
+
+        IrisMethodDef  (                   name = "copy"          , value = as.activeBindingFunction(function(.self) {
             # print(names(sys.frame(-1L)))
             # cat("\n")
             # print(names(sys.frame(-2L)))
@@ -657,44 +639,173 @@ IrisObject <- setIrisClass(
             # cat("\n")
             # print(sys.function(-4L))
             # cat("\n")
-            ..(get.envir.code)
-            `environment<-`(.copy.fun, environment())
+            envir <- who.called()
+            function(shallow = FALSE) copy(envir, shallow)
+        })),
+        IrisMethodDef  (                   name = "field"         , value = as.activeBindingFunction(eval(bquote2(function(.self) {
+            envir <- who.called()
+            function(name, value) {
+                if (missing(value))
+                    .(as.symbol(paste0("$.", IrisObject.className)))(envir, name)
+                else .(as.symbol(paste0("$<-.", IrisObject.className)))(envir, name, value)
+            }
         })))),
-        IrisMethodDef(                   name = "field"         , value = as.activeBindingFunction(eval(bquote2(function(.self) {
-            ..(get.envir.code)
-            `environment<-`(.field.fun, environment())
-        })))),
-        IrisMethodDef(                   name = "getClass"      , value = as.activeBindingFunction(eval(bquote2(function(.self) {
-            ..(get.envir.code)
-            `environment<-`(.getClass.fun, environment())
-        })))),
-        IrisMethodDef(                   name = "getIrisClass"  , value = as.activeBindingFunction(eval(bquote2(function(.self) {
-            ..(get.envir.code)
-            `environment<-`(.getIrisClass.fun, environment())
-        })))),
-        IrisMethodDef(                   name = "show"          , value = as.activeBindingFunction(eval(bquote2(function(.self) {
-            ..(get.envir.code)
-            `environment<-`(.show.fun, environment())
+        IrisMethodDef  (                   name = "getClass"      , value = as.activeBindingFunction(function(.self) {
+            envir <- who.called()
+            function(...) if (nargs()) getClass(...) else getClass(class(envir))
+        })),
+        IrisMethodDef  (                   name = "getIrisClass"  , value = as.activeBindingFunction(function(.self) {
+            envir <- who.called()
+            function(Class = class(envir)) getIrisClass(Class)
+        })),
+        IrisMethodDef  (                   name = "show"          , value = as.activeBindingFunction(eval(bquote2(function(.self) {
+            envir <- who.called()
+            function() .show(envir)
         }))))
-    )
+    ),
+    sealed = FALSE  # in setClass
 )
 
 
-setMethod(initialize, IrisClassDef@className,
-init.IrisClassDef(baseCase = FALSE))
+IrisClass <- setClass(
+    Class = IrisClass.className,
+    contains = attr(IrisObject, "className"),
+    slots = list(
+        className = "character",
+        package   = "character"
+    ),
+    sealed = FALSE  # in setClass
+)
+body(IrisClass@.Data) <- bquote(new(Class = .(IrisClass@className), ...))
 
 
-classDef <- getClass(IrisObject@className)
-fun <- function(...) NULL
-body(fun) <- bquote(new(Class = .(classDef@className), ...))
-fun <- as(fun, `packageSlot<-`("classGeneratorFunction", "methods"))
-fun@className <- classDef@className
-fun@package <- classDef@package
-IrisObject <- fun
-rm(classDef, fun)
+.irisClassTable <- new.env(parent = emptyenv())
 
 
-assign(paste0("$.", IrisObject@className) -> dollarGet, eval(bquote2(
+.setIrisClassPortion <- function (baseCase)
+{
+    eval(bquote2(
+function (Class, where = topenv(parent.frame()))
+{
+    def <- if (is.null(packageSlot(Class))) {
+        getClass(Class, where = where)
+    } else getClass(Class)
+    if (!is(def, .(IrisClassRepresentation@className)))
+        stop("invalid 'contains', must be a subclass of ", dQuote(.(attr(IrisObject, "className"))))
+
+
+..(
+if (baseCase) quote({
+    .Object <- new.env(parent = emptyenv())
+})
+else quote({
+    .Object <- new.env(parent = get(def@extends[[2L]], .irisClassTable))
+})
+)
+    class(.Object) <- c(.(IrisClass@className), .(attr(IrisObject, "className")), "environment")
+    attr(.Object, "className") <- def@className
+    attr(.Object, "package") <- def@package
+
+
+    for (method in def@methods) {
+        if (!method@static)
+            next
+
+    }
+    # selfEnv$new <- irisClassGeneratorFunction(className)
+    # lockEnvironment(selfEnv, bindings = TRUE)
+
+
+    assign(def@className, .Object, .irisClassTable)
+
+
+..(
+if (!baseCase) quote({
+    action <- function(ns) NULL
+    body(action) <- substitute({
+        parent.env(.Object) <- get(contains, .irisClassTable)
+        assign(className, .Object, .irisClassTable)
+    }, list(
+        className = def@className,
+        contains = def@extends[[2L]]
+    ))
+    environment(action) <- list2env(list(.Object = .Object), parent = this.namespace)
+    lockEnvironment(environment(action), bindings = TRUE)
+    setLoadAction(action, paste0(".", def@className, ".fixup"), where = where)
+})
+)
+
+
+    .Object
+}
+    ), parent.frame())
+}
+
+
+setIrisClassPortion <- .setIrisClassPortion(TRUE)
+
+
+IrisObject <- setIrisClassPortion(IrisObject@className)
+
+
+setClassPortion <- .setClassPortion(FALSE)
+setIrisClassPortion <- .setIrisClassPortion(FALSE)
+
+
+setMethod(initialize, IrisClass@className, eval(bquote2(
+function (.Object, className, members = list(), contains = .(attr(IrisObject, "className")),
+    where, validity = NULL, sealed = FALSE,
+    ...)
+{
+    where
+    fun <- setClassPortion(Class = className, members = members, contains = contains,
+        where = where, validity = validity, sealed = sealed, ...)
+    setIrisClassPortion(Class = fun@className, where = where)
+}
+)))
+
+
+setMethod(show, IrisClass@className,
+function (object)
+{
+    # object <- get(attr(IrisObject, "className"), iris:::.irisClassTable, inherits = FALSE)
+
+
+    cat("<iris class ", encodeString(attr(object, "className"), quote = "\""), ">\n", sep = "")
+    # fields <- object@fields
+    # if (length(fields) > 0L) {
+    #
+    # } else cat("No fields defined\n\n")
+    # methods <- object@methods
+    # if (length(methods)) {
+    #     .printNames("Methods", names(methods))
+    # } else cat("No class methods\n\n")
+
+
+}
+)
+
+
+assign(paste0("print.", IrisClass@className), function (x, ...)
+{
+    cat("<iris class ", encodeString(attr(x, "className"), quote = "\""), ">\n", sep = "")
+    invisible(x)
+})
+
+
+setIrisClass <- eval(bquote2(
+function (Class, members = list(), contains = .(attr(IrisObject, "className")), where = topenv(parent.frame()),
+    validity = NULL, sealed = FALSE)
+new(Class = .(IrisClass@className), className = Class, members = members,
+    contains = contains, where = where, validity = validity,
+    sealed = sealed)
+))
+
+
+# object              ----
+
+
+assign(paste0("$.", attr(IrisObject, "className")), eval(bquote2(
 function (x, name)
 .(
 if (R.preserves.active.bindings) quote(
@@ -707,7 +818,7 @@ get(x = name, envir = x)()
 )))
 
 
-assign(paste0("$<-.", IrisObject@className) -> dollarAssign, eval(bquote2(
+assign(paste0("$<-.", attr(IrisObject, "className")), eval(bquote2(
 function (x, name, value)
 {
 ..(
@@ -726,7 +837,7 @@ else quote({
 )))
 
 
-assign(paste0("[[.", IrisObject@className), eval(bquote2(
+assign(paste0("[[.", attr(IrisObject, "className")), eval(bquote2(
 function (x, i, ...)
 {
     if (...length())
@@ -743,7 +854,7 @@ else quote({
 )))
 
 
-assign(paste0("[[<-.", IrisObject@className), eval(bquote2(
+assign(paste0("[[<-.", attr(IrisObject, "className")), eval(bquote2(
 function (x, i, ..., value)
 {
     if (...length())
@@ -823,7 +934,7 @@ body(copy) <- substitute({
     .copy.check(x, value)
     value
 }, list(
-    IrisObject.className = IrisObject@className,
+    IrisObject.className = attr(IrisObject, "className"),
     envRefClass.className = `packageSlot<-`("envRefClass", "methods")
 ))
 
@@ -831,55 +942,36 @@ body(copy) <- substitute({
 utils::globalVariables("envir")
 
 
-.copy.fun <- function (shallow = FALSE)
-copy(envir, shallow)
+.getIrisClass <- function (Class)
+get(Class, envir = .irisClassTable, mode = "environment", inherits = FALSE)
 
 
-.field.fun <- function(name, value) NULL
-body(.field.fun) <- substitute({
-    if (missing(value))
-        dollarGet(envir, name)
-    else dollarAssign(envir, name, value)
-}, list(
-    dollarGet = as.symbol(dollarGet),
-    dollarAssign = as.symbol(dollarAssign)
-))
-
-
-.getClass.fun <- function (...)
-if (nargs()) getClass(...) else getClass(class(envir))
-
-
-getIrisClass <- function(Class, where = topenv(parent.frame())) NULL
-body(getIrisClass) <- substitute({
-    if (is(Class, IrisClassRepresentation.className)) {
+getIrisClass <- eval(bquote(
+function (Class, where = topenv(parent.frame()))
+{
+    if (is(Class, .(IrisClassRepresentation@className))) {
         classDef <- Class
         Class <- Class@className
     } else if (is.character(Class)) {
         classDef <- getClass(Class, where = where)
-        if (!is(classDef, IrisClassRepresentation.className))
+        if (!is(classDef, .(IrisClassRepresentation@className)))
             stop(gettextf("class %s is defined but is not an iris class",
                 dQuote(Class)))
-    } else if (is(Class, IrisObject.className)) {
+    } else if (is(Class, .(attr(IrisObject, "className")))) {
         Class <- class(Class)[[1L]]
         classDef <- getClass(Class, where = where)
-        if (!is(classDef, IrisClassRepresentation.className))
+        if (!is(classDef, .(IrisClassRepresentation@className)))
             stop(gettextf("class %s is defined but is not an iris class",
                 dQuote(Class)))
     } else stop(gettextf("class must be an iris class representation, a character string, or an iris class; got an object of class %s",
         dQuote(class(Class))))
-    get(Class, envir = .irisClassTable)
-}, list(
-    IrisClassRepresentation.className = IrisClassRepresentation@className,
-    IrisObject.className = IrisObject@className
+    .getIrisClass(Class)
+}
 ))
 
 
-.getIrisClass.fun <- function (Class = envir)
-getIrisClass(Class)
-
-
-.show <- function (envir)
+.show <- eval(bquote(
+function (envir)
 {
     cat(toString(envir), sep = "\n")
     tmp <- envir
@@ -894,7 +986,7 @@ getIrisClass(Class)
         exclude <- c(exclude, names(fields), names(methods))
         fields  <- fields [vapply(fields , attr, "access", FUN.VALUE = "") == "public"]
         methods <- methods[vapply(methods, attr, "access", FUN.VALUE = "") == "public"]
-        is.property <- vapply(methods, is, IrisPropertyDef@className, FUN.VALUE = NA)
+        is.property <- vapply(methods, is, .(IrisPropertyDef@className), FUN.VALUE = NA)
         properties <- methods[ is.property]
         methods    <- methods[!is.property]
         for (fi in fields) {
@@ -914,7 +1006,7 @@ getIrisClass(Class)
             show(.getWithoutCheck(pr, tmp)@.Data)
             cat("\n")
         }
-        # if (identical(def@className, IrisObject@className)) {
+        # if (identical(def@className, attr(IrisObject, "className"))) {
         #     specialNames <- c(".IrisClassDef", ".objectPackage")
         #     is.special <- names(methods) %in% specialNames
         #     specials <- methods[ is.special]
@@ -931,10 +1023,7 @@ getIrisClass(Class)
     .printNames("Methods", allPublicMethods)
     invisible(envir)
 }
-
-
-.show.fun <- function ()
-.show(envir)
+))
 
 
 .getWithoutCheck <- function (sym, env)
@@ -1011,23 +1100,19 @@ protected.check <- eval(bquote(function (x, n = 4L)
 }))
 
 
-assign(paste0("toString.", IrisObject@className),
+assign(paste0("toString.", attr(IrisObject, "className")),
 function (x, ...)
 paste0("<", encodeString(class(x)[[1L]], quote = "\""), " object at ", sub("^<environment: (.*)>$", "\\1", format.default(x)), ">"))
 
 
-setMethod(initialize, IrisObject@className, eval(bquote2(
+setMethod(initialize, attr(IrisObject, "className"), eval(bquote2(
 function (.Object, ...)
 {
-    # .Object <- structure(list(), class = IrisObject@className) ; stop("delete this")
-
-
-    x <- getIrisClass(.Object)
-
-
-    if (identical(x, .irisClassTable[[.(IrisObject@className)]])) {
+    def <- getClass(class(.Object))
+    irisDef <- getIrisClass(class(.Object))
+    if (identical(class(.Object), .(attr(IrisObject, "className")))) {
         .Object <- new.env(parent = emptyenv())
-        class(.Object) <- x@extends
+        class(.Object) <- def@extends
         # the superclass, but since IrisObject is the base class,
         # there is no superclass, and so we produce an error
         super <- function(value) stop("there is no superclass of ", toString(.Object), call. = FALSE)
@@ -1042,11 +1127,10 @@ else quote({
 })
 )
         lockBinding("super", .Object)
-        nms <- character()
     } else {
-        VALUE <- new(x@extends[[2L]])
+        VALUE <- new(def@extends[[2L]])
         .Object <- new.env(parent = VALUE)
-        class(.Object) <- x@extends
+        class(.Object) <- def@extends
         super <- function(value) {
             if (missing(value))
                 VALUE
@@ -1065,17 +1149,16 @@ else quote({
         lockBinding("super", .Object)
 })
 )
-        nms <- attr(VALUE, "field and method names")
     }
 
 
-    for (method in x@methods) {
+    for (method in def@methods) {
 
 
         # method <- x@methods$copy ; stop("remove this")
         method <- IrisMethod(method = method, boundTo = .Object)
 ..(
-if (R.preserves.active.bindings) quote({
+if (R.preserves.active.bindings) bquote2({
         needs.an.active.binding <- FALSE
         if (method@is.property) {
             needs.an.active.binding <- TRUE
@@ -1127,7 +1210,7 @@ if (R.preserves.active.bindings) quote({
         if (do_lock)
             lockBinding(method@name, .Object)
 })
-else quote({
+else bquote2({
         if (method@is.property || method@is.active) {
             fun <- function(value) {
                 if (missing(value))
@@ -1175,11 +1258,13 @@ else quote({
     }
 
 
-    for (field in x@fields) {
+    for (field in def@fields) {
         VALUE <- field@value
         env <- list2env(list(.Object = .Object, VALUE = VALUE), parent = this.namespace)
         lockBinding(".Object", env)
         fun <- function(value) NULL
+..(
+if (R.preserves.active.bindings) bquote2({
         needs.an.active.binding <- FALSE
 
 
@@ -1218,7 +1303,6 @@ else quote({
                 ))
             }
         }
-
 
 
         if (field@final) {
@@ -1301,19 +1385,126 @@ else quote({
         }
         if (do_lock)
             lockBinding(field@name, .Object)
+})
+else bquote2({
+        # if we're locking the field, we don't need do_assign
+        if (do_lock <- field@final && field@hasValue) {
+
+
+        # if we're not locking the field, we need do_assign
+        } else {
+            if (identical(field@className, .(`packageSlot<-`("ANY", "methods")))) {
+                do_assign <- quote(VALUE <<- value)
+            } else {
+                do_assign <- substitute({
+                    valueClass <- class(value)
+                    if (.identC(cl, valueClass)) {
+                        VALUE <<- value
+                    } else {
+                        ok <- possibleExtends(valueClass, cl)
+                        # if (isFALSE(ok))
+                        #     stop(sprintf("assignment of an object of class %s is not valid for field %s in %s; is(value, \"%s\") is not TRUE",
+                        #         paste(dQuote(valueClass), collapse = ", "),
+                        #         sQuote(name), string, cl))
+                        # else if (isTRUE(ok))
+                        #     VALUE <<- value
+                        # else VALUE <<- as(value, cl, strict = FALSE, ext = ok)
+                        if (isFALSE(ok))
+                            stop(sprintf("assignment of an object of class %s is not valid for field %s in %s; is(value, \"%s\") is not TRUE",
+                                paste(dQuote(valueClass), collapse = ", "),
+                                sQuote(name), toString(.Object), cl))
+                        VALUE <<- value
+                    }
+                }, list(
+                    cl     = field@className,
+                    name   = field@name
+                ))
+            }
+        }
+
+
+        if (field@final) {
+            if (field@hasValue) {
+                body(fun) <- substitute({
+                    if (missing(value))
+                        VALUE
+                    else stop(cannot.change.value.msg, call. = FALSE)
+                }, list(
+                    cannot.change.value.msg = paste0("cannot change value of final field '", field@name, "'")
+                ))
+                lockBinding("VALUE", env)
+            } else {
+                body(fun) <- substitute({
+                    if (missing(value)) {
+                        if (initialized)
+                            VALUE
+                        else stop(not.init.msg, toString(.Object), "> is not initialized", call. = FALSE)
+                    }
+                    else if (initialized)
+                        stop(cannot.change.value.msg, call. = FALSE)
+                    else {
+                        initialized <<- TRUE
+                        do_assign
+                        lockEnvironment(env, bindings = TRUE)
+                        lockBinding(name, .Object)
+                        invisible(VALUE)
+                    }
+                }, list(
+                    do_assign = do_assign,
+                    not.init.msg = paste0("<field \"", field@name, "\" of "),
+                    cannot.change.value.msg = paste0("cannot change value of final field '", field@name, "'"),
+                    env = env,
+                    name = field@name
+                ))
+                env$initialized <- FALSE
+            }
+        } else {
+            body(fun) <- substitute({
+                if (missing(value))
+                    VALUE
+                else do_assign
+            }, list(do_assign = do_assign))
+        }
+        switch (field@access,
+        private = {
+            body(fun) <- substitute({
+                if (private.check(.Object))
+                    funBody
+                else stop(msg, toString(.Object), "> is private", call. = FALSE)
+            }, list(
+                funBody = body(fun),
+                msg = paste0("<field \"", field@name, "\" of ")
+            ))
+        },
+        protected = {
+            body(fun) <- substitute({
+                if (protected.check(.Object))
+                    funBody
+                else stop(msg, toString(.Object), "> is protected", call. = FALSE)
+            }, list(
+                funBody = body(fun),
+                msg = paste0("<field \"", field@name, "\" of ")
+            ))
+        },
+        public = {
+        },
+        {
+            stop("invalid field@access; should never happen, please report!")
+        })
+        lockEnvironment(env)
+        environment(fun) <- env
+        assign(field@name, fun, envir = .Object)
+        lockBinding(field@name, .Object)
+})
+)
     }
     lockEnvironment(.Object)
-    attr(.Object, "field and method names") <- unique(c(
-        names(x@fields) [vapply(x@fields , attr, "access", FUN.VALUE = "") == "public"],
-        names(x@methods)[vapply(x@methods, attr, "access", FUN.VALUE = "") == "public"],
-        nms
-    ))
     .Object
 }
-, splice = TRUE)))
+)))
 
 
-setMethod(show, IrisObject@className,
+setMethod(show, attr(IrisObject, "className"),
 function (object)
 {
     cat(toString(object), sep = "\n")
@@ -1321,16 +1512,12 @@ function (object)
 })
 
 
-assign(paste0("print.", IrisObject@className),
+assign(paste0("print.", attr(IrisObject, "className")),
 function (x, ...)
 {
     cat(toString(x), sep = "\n")
     invisible(x)
 })
-
-
-assign(paste0("names.", IrisObject@className),
-function(x) attr(x, "field and method names"))
 
 
 # other names         ----
@@ -1339,3 +1526,7 @@ function(x) attr(x, "field and method names"))
 field <- IrisFieldDef
 method <- IrisMethodDef
 property <- IrisPropertyDef
+
+
+rm(R.preserves.active.bindings,  IrisFieldDef, IrisMethodDef, IrisPropertyDef, IrisMemberDef,
+    .setClassPortion, .setIrisClassPortion, IrisClass.className, .IrisObject.className, IrisObject.className)
