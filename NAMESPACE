@@ -58,17 +58,18 @@ importFrom(methods,
 export(setIrisClass, field, method, property)
 
 
-exportClasses("iris::FieldDef",
-              "iris::MethodDef",
-              "iris::PropertyDef",
-              "iris::object",
-              "iris::class")
+# exportClasses("iris::FieldDef",
+#               "iris::MethodDef",
+#               "iris::PropertyDef",
+#               "iris::object",
+#               "iris::class")
+#
+#
+# exportMethods(initialize, show)
 
 
-exportMethods(initialize, show)
-
-
-S3method(print   , "iris::method")
+S3method(print   , "iris::BoundMethod")
+S3method(toString, "iris::BoundMethod")
 
 
 S3method("$"     , "iris::object")
@@ -79,4 +80,4 @@ S3method(print   , "iris::object")
 S3method(toString, "iris::object")
 
 
-S3method(print   , "iris::class" )
+S3method(toString, "iris::class" )

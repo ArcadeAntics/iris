@@ -1,3 +1,13 @@
+
+
+# this package was originally made using active bindings
+#
+# unfortunately, I found out later that R does not preserve active bindings
+# between sessions, meaning tons of complications for defining iris classes
+# within packages and when saving an iris object then reloading it
+#
+# I didn't want to throw out my work though, so I introduced this flag that
+# will compile the code differently depending on its value
 R.preserves.active.bindings <- FALSE
 
 
@@ -98,7 +108,7 @@ new(.(`packageSlot<-`("activeBindingFunction", "methods")), x)
 
 
 IrisFieldDef <- setClass(
-    Class = as.className("FieldDef"),
+    Class = as.className("field"),
     slots = list(
         access    = "character",
         static    = "logical"  ,
@@ -111,11 +121,19 @@ IrisFieldDef <- setClass(
     sealed = FALSE  # in setClass
 )
 IrisFieldDef@.Data <- eval(bquote2(
-function (access = NA, static = FALSE, final = FALSE, className = .(`packageSlot<-`("ANY", "methods")),
+function (access = NA, static = FALSE, final = FALSE, Class = .(`packageSlot<-`("ANY", "methods")),
     name, value, where = topenv(parent.frame()), ...)
-new(Class = .(IrisFieldDef@className), access = access, static = static,
-    final = final, className = className, name = name, value = value,
-    where = where, ...)
+{
+    if (missing(value))
+        new(Class = .(IrisFieldDef@className), access = access, static = static,
+            final = final, className = Class, name = name, value = ,
+            where = where, ...)
+    else {
+        new(Class = .(IrisFieldDef@className), access = access, static = static,
+            final = final, className = Class, name = name, value = value,
+            where = where, ...)
+    }
+}
 ))
 
 
@@ -224,7 +242,7 @@ function (object)
 
 
 IrisMethodDef <- setClass(
-    Class = as.className("MethodDef"),
+    Class = as.className("method"),
     slots = list(
         access = "character",
         static = "logical"  ,
@@ -319,7 +337,7 @@ function (object)
 
 
 IrisPropertyDef <- setClass(
-    Class = as.className("PropertyDef"),
+    Class = as.className("property"),
     contains = IrisMethodDef@className,
     sealed = FALSE  # in setClass
 )
@@ -335,7 +353,7 @@ new(Class = .(IrisPropertyDef@className), access = access, static = static,
 
 
 IrisMemberDef <- setClassUnion(
-    name = as.className("MemberDef"),
+    name = as.className("member"),
     members = c(
         IrisFieldDef   @className,
         IrisMethodDef  @className,
@@ -348,7 +366,7 @@ IrisMemberDef <- setClassUnion(
 
 
 IrisMethod <- setClass(
-    Class = as.className("method"),
+    Class = as.className("BoundMethod"),
     contains = "function",
     slots = list(
         access = "character",
@@ -452,19 +470,24 @@ body(IrisClassRepresentation@.Data) <- bquote(new(Class = .(IrisClassRepresentat
 # class               ----
 
 
+IrisClass.className <- as.className("class")
+.IrisObject.className <- "object"
+IrisObject.className <- as.className(.IrisObject.className)
+
+
 .setClassPortion <- function (baseCase)
 {
     eval(bquote2(
-function (Class, members = list(), contains = .(if (baseCase) "environment" else attr(IrisObject, "className")),
-    where = topenv(parent.frame()), validity = NULL, sealed = FALSE,
-    ...)
+function (Class, ..., contains = character(), where = topenv(parent.frame()),
+    validity = NULL, sealed = FALSE)
 {
     Class <- as.className(Class, where)
 
 
+    members <- c(list(...), recursive = TRUE, use.names = FALSE)
     members <- lapply(members, function(xx) {
         if (!is(xx, .(IrisMemberDef@className)))
-            stop("invalid 'members', must be a list of field, method, and property definitions")
+            stop("invalid 'members', must be a set of fields, methods, and properties")
         xx
     })
     nms <- vapply(members, function(xx) xx@name, "")
@@ -478,6 +501,10 @@ if (baseCase) quote({
     contains <- "environment"
     extends <- c(Class, "environment")
 }) else bquote({
+    if (length(contains) <= 0)
+        contains <- .(attr(IrisObject, "className"))
+    if (is(contains, .(IrisClass.className)))
+        contains <- attr(contains, "className")
     def <- getClass(contains, where = where)
     if (!is(def, .(IrisClassRepresentation@className)))
         stop("invalid 'contains', must be a subclass of ", dQuote(.(attr(IrisObject, "className"))))
@@ -578,91 +605,92 @@ else quote({
 # }
 
 
-IrisClass.className <- as.className("class")
-.IrisObject.className <- "object"
-IrisObject.className <- as.className(.IrisObject.className)
-
-
 IrisObject <- setClassPortion(
     Class = .IrisObject.className,
-    members = list(
-        IrisMethodDef  (                   name = "new"           , value = as.activeBindingFunction(eval(bquote2(function() {
-            envir <- who.called()
-            if (is(envir, .(IrisClass.className)))
-                Class <- attr(envir, "className")
-            else Class <- class(envir)
-            function(...) {
-                .Object <- new(Class)
-                if (exists("initialize", envir = .Object, inherits = FALSE)) {
-                    initialize <- .getWithoutCheck("initialize", .Object)
-                    if (is(initialize, .(IrisMethod@className)) && !initialize@static)
-                        initialize(...)
-                }
-                tmp <- .Object
-                while (!identical(tmp, emptyenv())) {
-                    if (exists("finalize", envir = tmp, inherits = FALSE)) {
-                        finalize <- .getWithoutCheck("finalize", tmp)
-                        if (is(finalize, .(IrisMethod@className)) && !finalize@static)
-                            reg.finalizer(tmp, finalize, onexit = TRUE)
-                    }
-                    tmp <- parent.env(tmp)
-                }
-                if (exists("validate", envir = .Object, inherits = FALSE)) {
-                    validate <- .getWithoutCheck("validate", .Object)
-                    if (is(validate, .(IrisMethod@className)) && !validate@static)
-                        validate()
-                }
-                .Object
+    IrisMethodDef  (                   name = "new"           , value = as.activeBindingFunction(eval(bquote2(function() {
+        envir <- who.called()
+        if (is(envir, .(IrisClass.className)))
+            Class <- attr(envir, "className")
+        else Class <- class(envir)
+        function(...) {
+            .Object <- new(Class)
+            if (exists("initialize", envir = .Object, inherits = FALSE)) {
+                initialize <- .getWithoutCheck("initialize", .Object)
+                if (is(initialize, .(IrisMethod@className)) && !initialize@static)
+                    initialize(...)
+
+                stop()
+                .Object <- obj2
+methods <- getClass(class(.Object))@methods
+if ("initialize" %in% names(methods) && !methods[["initialize"]]@static) {
+    initialize <- environment(get("initialize", envir = .Object, inherits = FALSE))$VALUE
+    if (initialize@is.active || initialize@is.property)
+        initialize <- initialize()
+}
+initialize
             }
-        })))),
-
-
-        IrisPropertyDef(access = "public", name = ".classDef"     , value = function(.self) getClass(class(who.called()))        ),
-        IrisPropertyDef(access = "public", name = ".irisClassDef" , value = function(.self) getIrisClass(who.called())           ),
-        IrisPropertyDef(access = "public", name = ".objectPackage", value = function(.self) getClass(class(who.called()))@package),
-
-
-        IrisMethodDef  (                   name = "copy"          , value = as.activeBindingFunction(function(.self) {
-            # print(names(sys.frame(-1L)))
-            # cat("\n")
-            # print(names(sys.frame(-2L)))
-            # cat("\n")
-            # print(names(sys.frame(-3L)))
-            # cat("\n")
-            # print(names(sys.frame(-4L)))
-            # cat("\n")
-            # print(sys.function(-1L))
-            # cat("\n")
-            # print(sys.function(-2L))
-            # cat("\n")
-            # print(sys.function(-3L))
-            # cat("\n")
-            # print(sys.function(-4L))
-            # cat("\n")
-            envir <- who.called()
-            function(shallow = FALSE) copy(envir, shallow)
-        })),
-        IrisMethodDef  (                   name = "field"         , value = as.activeBindingFunction(eval(bquote2(function(.self) {
-            envir <- who.called()
-            function(name, value) {
-                if (missing(value))
-                    .(as.symbol(paste0("$.", IrisObject.className)))(envir, name)
-                else .(as.symbol(paste0("$<-.", IrisObject.className)))(envir, name, value)
+            tmp <- .Object
+            while (!identical(tmp, emptyenv())) {
+                if (exists("finalize", envir = tmp, inherits = FALSE)) {
+                    finalize <- .getWithoutCheck("finalize", tmp)
+                    if (is(finalize, .(IrisMethod@className)) && !finalize@static)
+                        reg.finalizer(tmp, finalize, onexit = TRUE)
+                }
+                tmp <- parent.env(tmp)
             }
-        })))),
-        IrisMethodDef  (                   name = "getClass"      , value = as.activeBindingFunction(function(.self) {
-            envir <- who.called()
-            function(...) if (nargs()) getClass(...) else getClass(class(envir))
-        })),
-        IrisMethodDef  (                   name = "getIrisClass"  , value = as.activeBindingFunction(function(.self) {
-            envir <- who.called()
-            function(Class = class(envir)) getIrisClass(Class)
-        })),
-        IrisMethodDef  (                   name = "show"          , value = as.activeBindingFunction(eval(bquote2(function(.self) {
-            envir <- who.called()
-            function() .show(envir)
-        }))))
-    ),
+            if (exists("validate", envir = .Object, inherits = FALSE)) {
+                validate <- .getWithoutCheck("validate", .Object)
+                if (is(validate, .(IrisMethod@className)) && !validate@static)
+                    validate()
+            }
+            .Object
+        }
+    })))),
+    IrisPropertyDef(access = "public", name = ".classDef"     , value = function(.self) getClass(class(who.called()))        ),
+    IrisPropertyDef(access = "public", name = ".irisClassDef" , value = function(.self) getIrisClass(who.called())           ),
+    IrisPropertyDef(access = "public", name = ".objectPackage", value = function(.self) getClass(class(who.called()))@package),
+
+
+    IrisMethodDef  (                   name = "copy"          , value = as.activeBindingFunction(function(.self) {
+        # print(names(sys.frame(-1L)))
+        # cat("\n")
+        # print(names(sys.frame(-2L)))
+        # cat("\n")
+        # print(names(sys.frame(-3L)))
+        # cat("\n")
+        # print(names(sys.frame(-4L)))
+        # cat("\n")
+        # print(sys.function(-1L))
+        # cat("\n")
+        # print(sys.function(-2L))
+        # cat("\n")
+        # print(sys.function(-3L))
+        # cat("\n")
+        # print(sys.function(-4L))
+        # cat("\n")
+        envir <- who.called()
+        function(shallow = FALSE) copy(envir, shallow)
+    })),
+    IrisMethodDef  (                   name = "field"         , value = as.activeBindingFunction(eval(bquote2(function(.self) {
+        envir <- who.called()
+        function(name, value) {
+            if (missing(value))
+                .(as.symbol(paste0("$.", IrisObject.className)))(envir, name)
+            else .(as.symbol(paste0("$<-.", IrisObject.className)))(envir, name, value)
+        }
+    })))),
+    IrisMethodDef  (                   name = "getClass"      , value = as.activeBindingFunction(function(.self) {
+        envir <- who.called()
+        function(...) if (nargs()) getClass(...) else getClass(class(envir))
+    })),
+    IrisMethodDef  (                   name = "getIrisClass"  , value = as.activeBindingFunction(function(.self) {
+        envir <- who.called()
+        function(Class = class(envir)[[1L]]) getIrisClass(Class)
+    })),
+    IrisMethodDef  (                   name = "show"          , value = as.activeBindingFunction(eval(bquote2(function(.self) {
+        envir <- who.called()
+        function() .show(envir)
+    })))),
     sealed = FALSE  # in setClass
 )
 
@@ -682,6 +710,380 @@ body(IrisClass@.Data) <- bquote(new(Class = .(IrisClass@className), ...))
 .irisClassTable <- new.env(parent = emptyenv())
 
 
+fix.class <- function (x)
+{
+    parent.env(x) <- .getIrisClass(getClass(attr(x, "className"))@extends[[2L]])
+    assign(attr(x, "className"), x, .irisClassTable)
+    invisible(x)
+}
+
+
+giveBoundMethod <- eval(bquote2(
+function (.Object, method)
+{
+    method <- IrisMethod(method = method, boundTo = .Object)
+..(
+if (R.preserves.active.bindings) bquote2({
+    needs.an.active.binding <- FALSE
+    if (method@is.property) {
+        needs.an.active.binding <- TRUE
+        fun <- function(value) {
+            if (missing(value))
+                method()
+            else method(value)
+        }
+        do_lock <- FALSE
+    } else {
+        fun <- function(value) VALUE
+        do_lock <- TRUE
+    }
+    switch (method@access,
+    private = {
+        needs.an.active.binding <- TRUE
+        body(fun) <- substitute({
+            if (private.check(.Object))
+                funBody
+            else stop(toString(method), " is private", call. = FALSE)
+        }, list(funBody = body(fun)))
+    },
+    protected = {
+        needs.an.active.binding <- TRUE
+        body(fun) <- substitute({
+            if (protected.check(.Object))
+                funBody
+            else stop(toString(method), " is protected", call. = FALSE)
+        }, list(funBody = body(fun)))
+    },
+    public = {
+    },
+    {
+        stop("invalid method@access; should never happen, please report!")
+    })
+    if (needs.an.active.binding) {
+        env <- list2env(list(.Object = .Object, method = method), parent = this.namespace)
+        if (method@is.active) {
+            makeActiveBinding("VALUE", method, env)
+        } else env$VALUE <- method
+        lockEnvironment(env, bindings = TRUE)
+        environment(fun) <- env
+        makeActiveBinding(method@name, fun, .Object)
+    } else if (method@is.active) {
+        makeActiveBinding(method@name, method, .Object)
+    } else {
+        assign(method@name, method, envir = .Object)
+    }
+    if (do_lock)
+        lockBinding(method@name, .Object)
+})
+else bquote2({
+    env <- list2env(list(.Object = .Object, VALUE = method), parent = this.namespace)
+    lockEnvironment(env, bindings = TRUE)
+    if (method@is.property || method@is.active) {
+        fun <- function(value) {
+            if (missing(value))
+                VALUE()
+            else VALUE(value)
+        }
+    } else {
+        fun <- function(value) NULL
+        body(fun) <- substitute({
+            if (missing(value))
+                VALUE
+            else stop(msg, call. = FALSE)
+        }, list(
+            msg = paste0("cannot change value of locked binding for '", method@name, "'")
+        ))
+    }
+    switch (method@access,
+    private = {
+        body(fun) <- substitute({
+            if (private.check(.Object))
+                funBody
+            else stop(toString(VALUE), " is private", call. = FALSE)
+        }, list(funBody = body(fun)))
+    },
+    protected = {
+        body(fun) <- substitute({
+            if (protected.check(.Object))
+                funBody
+            else stop(toString(VALUE), " is protected", call. = FALSE)
+        }, list(funBody = body(fun)))
+    },
+    public = {
+    },
+    {
+        stop("invalid method@access; should never happen, please report!")
+    })
+    environment(fun) <- env
+    assign(method@name, fun, envir = .Object)
+    lockBinding(method@name, .Object)
+})
+)
+}
+))
+
+
+giveField <- eval(bquote2(
+function (.Object, field)
+{
+    VALUE <- field@value
+    env <- list2env(list(.Object = .Object, VALUE = VALUE, access = field@access), parent = this.namespace)
+    lockBinding(".Object", env)
+    lockBinding("access", env)
+..(
+if (R.preserves.active.bindings) bquote2({
+    fun <- function(value) NULL
+    needs.an.active.binding <- FALSE
+
+
+    # if we're locking the field, we don't need do_assign
+    if (do_lock <- field@final && field@hasValue) {
+
+
+        # if we're not locking the field, we need do_assign
+    } else {
+        if (identical(field@className, .(`packageSlot<-`("ANY", "methods")))) {
+            do_assign <- quote(VALUE <<- value)
+        } else {
+            needs.an.active.binding <- TRUE
+            do_assign <- substitute({
+                valueClass <- class(value)
+                if (.identC(cl, valueClass)) {
+                    VALUE <<- value
+                } else {
+                    ok <- possibleExtends(valueClass, cl)
+                    # if (isFALSE(ok))
+                    #     stop(sprintf("assignment of an object of class %s is not valid for field %s in %s; is(value, \"%s\") is not TRUE",
+                    #         paste(dQuote(valueClass), collapse = ", "),
+                    #         sQuote(name), string, cl))
+                    # else if (isTRUE(ok))
+                    #     VALUE <<- value
+                    # else VALUE <<- as(value, cl, strict = FALSE, ext = ok)
+                    if (isFALSE(ok))
+                        stop(sprintf("assignment of an object of class %s is not valid for field %s in %s; is(value, \"%s\") is not TRUE",
+                            paste(dQuote(valueClass), collapse = ", "),
+                            sQuote(name), toString(.Object), cl))
+                    VALUE <<- value
+                }
+            }, list(
+                cl     = field@className,
+                name   = field@name
+            ))
+        }
+    }
+
+
+    if (field@final) {
+        if (field@hasValue) {
+            body(fun) <- substitute({
+                if (missing(value))
+                    VALUE
+                else stop(cannot.change.value.msg, call. = FALSE)
+            }, list(
+                cannot.change.value.msg = paste0("cannot change value of final field '", field@name, "'")
+            ))
+            lockBinding("VALUE", env)
+        } else {
+            needs.an.active.binding <- TRUE
+            body(fun) <- substitute({
+                if (missing(value)) {
+                    if (initialized)
+                        VALUE
+                    else stop(not.init.msg, toString(.Object), "> is not initialized", call. = FALSE)
+                }
+                else if (initialized)
+                    stop(cannot.change.value.msg, call. = FALSE)
+                else {
+                    initialized <<- TRUE
+                    do_assign
+                    lockEnvironment(env, bindings = TRUE)
+                    lockBinding(name, .Object)
+                    invisible(VALUE)
+                }
+            }, list(
+                do_assign = do_assign,
+                not.init.msg = paste0("<field \"", field@name, "\" of "),
+                cannot.change.value.msg = paste0("cannot change value of final field '", field@name, "'"),
+                env = env,
+                name = field@name
+            ))
+            env$initialized <- FALSE
+        }
+    } else {
+        body(fun) <- substitute({
+            if (missing(value))
+                VALUE
+            else do_assign
+        }, list(do_assign = do_assign))
+    }
+    switch (field@access,
+    private = {
+        needs.an.active.binding <- TRUE
+        body(fun) <- substitute({
+            if (private.check(.Object))
+                funBody
+            else stop(msg, toString(.Object), "> is private", call. = FALSE)
+        }, list(
+            funBody = body(fun),
+            msg = paste0("<field \"", field@name, "\" of ")
+        ))
+    },
+    protected = {
+        needs.an.active.binding <- TRUE
+        body(fun) <- substitute({
+            if (protected.check(.Object))
+                funBody
+            else stop(msg, toString(.Object), "> is protected", call. = FALSE)
+        }, list(
+            funBody = body(fun),
+            msg = paste0("<field \"", field@name, "\" of ")
+        ))
+    },
+    public = {
+    },
+    {
+        stop("invalid field@access; should never happen, please report!")
+    })
+    if (needs.an.active.binding) {
+        lockEnvironment(env)
+        environment(fun) <- env
+        makeActiveBinding(field@name, fun, .Object)
+    } else {
+        assign(field@name, VALUE, .Object)
+    }
+    if (do_lock)
+        lockBinding(field@name, .Object)
+})
+else bquote2({
+
+
+    if (field@final && field@hasValue) {
+        do_assign <- function(value) NULL
+        body(do_assign) <- substitute({
+            stop(cannot.change.value.msg, call. = FALSE)
+        }, list(
+            cannot.change.value.msg = paste0("cannot change value of final field '", field@name, "'")
+        ))
+        lockBinding("VALUE", env)
+    } else {
+        if (identical(field@className, .(`packageSlot<-`("ANY", "methods")))) {
+            do_assign <- function(value) VALUE <<- value
+        } else {
+            do_assign <- function(value) NULL
+            body(do_assign) <- substitute({
+                valueClass <- class(value)
+                if (.identC(cl, valueClass)) {
+                    VALUE <<- value
+                } else {
+                    ok <- possibleExtends(valueClass, cl)
+                    # if (isFALSE(ok))
+                    #     stop(sprintf("assignment of an object of class %s is not valid for field %s in %s; is(value, \"%s\") is not TRUE",
+                    #         paste(dQuote(valueClass), collapse = ", "),
+                    #         sQuote(name), string, cl))
+                    # else if (isTRUE(ok))
+                    #     VALUE <<- value
+                    # else VALUE <<- as(value, cl, strict = FALSE, ext = ok)
+                    if (isFALSE(ok))
+                        stop(sprintf("assignment of an object of class %s is not valid for field %s in %s; is(value, \"%s\") is not TRUE",
+                                     paste(dQuote(valueClass), collapse = ", "),
+                                     sQuote(name), toString(.Object), cl))
+                    VALUE <<- value
+                }
+            }, list(
+                cl     = field@className,
+                name   = field@name
+            ))
+        }
+    }
+    environment(do_assign) <- env
+
+
+    if (field@final && !field@hasValue) {
+
+
+        do_get <- function() NULL
+        body(do_get) <- substitute({
+            stop(msg, toString(.Object), "> is not initialized", call. = FALSE)
+        }, list(
+            msg = paste0("<field \"", field@name, "\" of ")
+        ))
+
+
+        new_do_assign <- function(value) NULL
+        body(new_do_assign) <- substitute({
+            stop(msg, call. = FALSE)
+        }, list(
+            msg = paste0("cannot change value of final field '", field@name, "'")
+        ))
+        environment(new_do_assign) <- env
+
+
+        new_do_get <- function() VALUE
+        environment(new_do_get) <- env
+
+
+        body(do_assign) <- substitute({
+            body.do_assign
+            do_assign <<- new_do_assign
+            do_get <<- new_do_get
+            lockEnvironment(parent.env(environment()), bindings = TRUE)
+            invisible(VALUE)
+        }, list(
+            body.do_assign = body(do_assign),
+            new_do_assign  = new_do_assign,
+            new_do_get     = new_do_get
+        ))
+
+
+    } else {
+        do_get <- function() VALUE
+    }
+    environment(do_get) <- env
+    env$do_assign <- do_assign
+    env$do_get <- do_get
+
+
+    fun <- function(value) {
+        if (missing(value))
+            do_get()
+        else do_assign(value)
+    }
+    switch (field@access,
+    private = {
+        body(fun) <- substitute({
+            if (private.check(.Object))
+                funBody
+            else stop(msg, toString(.Object), "> is private", call. = FALSE)
+        }, list(
+            funBody = body(fun),
+            msg = paste0("<field \"", field@name, "\" of ")
+        ))
+    },
+    protected = {
+        body(fun) <- substitute({
+            if (protected.check(.Object))
+                funBody
+            else stop(msg, toString(.Object), "> is protected", call. = FALSE)
+        }, list(
+            funBody = body(fun),
+            msg = paste0("<field \"", field@name, "\" of ")
+        ))
+    },
+    public = {
+    },
+    {
+        stop("invalid field@access; should never happen, please report!")
+    })
+    lockEnvironment(env)
+    environment(fun) <- env
+    assign(field@name, fun, envir = .Object)
+    lockBinding(field@name, .Object)
+})
+)
+}
+))
+
+
 .setIrisClassPortion <- function (baseCase)
 {
     eval(bquote2(
@@ -691,17 +1093,35 @@ function (Class, where = topenv(parent.frame()))
         getClass(Class, where = where)
     } else getClass(Class)
     if (!is(def, .(IrisClassRepresentation@className)))
-        stop("invalid 'contains', must be a subclass of ", dQuote(.(attr(IrisObject, "className"))))
+        stop("invalid 'Class', must be a subclass of ", dQuote(.(attr(IrisObject, "className"))))
 
 
 ..(
 if (baseCase) quote({
     .Object <- new.env(parent = emptyenv())
+    # super <- function(value) stop("there is no superclass of ", toString(.Object), call. = FALSE)
+    # environment(super) <- list2env(list(.Object = .Object), parent = this.namespace)
+    # lockEnvironment(environment(super), bindings = TRUE)
+    # assign("super", super, envir = .Object)
+    # lockBinding("super", .Object)
 })
 else quote({
-    .Object <- new.env(parent = get(def@extends[[2L]], .irisClassTable))
+    .Object <- new.env(parent = .getIrisClass(def@extends[[2L]]))
+    # super <- function(value) {
+    #     if (missing(value))
+    #         parent.env(.Object)
+    #     else if (!identical(parent.env(.Object), value))
+    #         stop("cannot change value of locked binding for 'super'")
+    #     else invisible(parent.env(.Object))
+    # }
+    # environment(super) <- list2env(list(.Object = .Object), parent = this.namespace)
+    # lockEnvironment(environment(super), bindings = TRUE)
+    # assign("super", super, envir = .Object)
+    # lockBinding("super", .Object)
 })
 )
+
+
     class(.Object) <- c(.(IrisClass@className), .(attr(IrisObject, "className")), "environment")
     attr(.Object, "className") <- def@className
     attr(.Object, "package") <- def@package
@@ -710,7 +1130,14 @@ else quote({
     for (method in def@methods) {
         if (!method@static)
             next
+        giveBoundMethod(.Object, method)
+    }
 
+
+    for (field in def@fields) {
+        if (!field@static)
+            next
+        giveField(.Object, field)
     }
     # selfEnv$new <- irisClassGeneratorFunction(className)
     # lockEnvironment(selfEnv, bindings = TRUE)
@@ -721,14 +1148,7 @@ else quote({
 
 ..(
 if (!baseCase) quote({
-    action <- function(ns) NULL
-    body(action) <- substitute({
-        parent.env(.Object) <- get(contains, .irisClassTable)
-        assign(className, .Object, .irisClassTable)
-    }, list(
-        className = def@className,
-        contains = def@extends[[2L]]
-    ))
+    action <- function(ns) fix.class(.Object)
     environment(action) <- list2env(list(.Object = .Object), parent = this.namespace)
     lockEnvironment(environment(action), bindings = TRUE)
     setLoadAction(action, paste0(".", def@className, ".fixup"), where = where)
@@ -753,13 +1173,12 @@ setIrisClassPortion <- .setIrisClassPortion(FALSE)
 
 
 setMethod(initialize, IrisClass@className, eval(bquote2(
-function (.Object, className, members = list(), contains = .(attr(IrisObject, "className")),
-    where, validity = NULL, sealed = FALSE,
-    ...)
+function (.Object, className, ..., contains = character(),
+    where, validity = NULL, sealed = FALSE)
 {
     where
-    fun <- setClassPortion(Class = className, members = members, contains = contains,
-        where = where, validity = validity, sealed = sealed, ...)
+    fun <- setClassPortion(Class = className, ..., contains = contains,
+        where = where, validity = validity, sealed = sealed)
     setIrisClassPortion(Class = fun@className, where = where)
 }
 )))
@@ -786,19 +1205,15 @@ function (object)
 )
 
 
-assign(paste0("print.", IrisClass@className), function (x, ...)
-{
-    cat("<iris class ", encodeString(attr(x, "className"), quote = "\""), ">\n", sep = "")
-    invisible(x)
-})
+assign(paste0("toString.", IrisClass@className), function (x, ...)
+paste0("<iris class \"", attr(x, "className"), "\">"))
 
 
 setIrisClass <- eval(bquote2(
-function (Class, members = list(), contains = .(attr(IrisObject, "className")), where = topenv(parent.frame()),
+function (Class, ..., contains = character(), where = topenv(parent.frame()),
     validity = NULL, sealed = FALSE)
-new(Class = .(IrisClass@className), className = Class, members = members,
-    contains = contains, where = where, validity = validity,
-    sealed = sealed)
+new(Class = .(IrisClass@className), className = Class, ..., contains = contains,
+    where = where, validity = validity, sealed = sealed)
 ))
 
 
@@ -939,11 +1354,8 @@ body(copy) <- substitute({
 ))
 
 
-utils::globalVariables("envir")
-
-
 .getIrisClass <- function (Class)
-get(Class, envir = .irisClassTable, mode = "environment", inherits = FALSE)
+get(Class[[1L]], envir = .irisClassTable, mode = "environment", inherits = FALSE)
 
 
 getIrisClass <- eval(bquote(
@@ -954,6 +1366,7 @@ function (Class, where = topenv(parent.frame()))
         Class <- Class@className
     } else if (is.character(Class)) {
         classDef <- getClass(Class, where = where)
+        Class <- classDef@className
         if (!is(classDef, .(IrisClassRepresentation@className)))
             stop(gettextf("class %s is defined but is not an iris class",
                 dQuote(Class)))
@@ -1046,7 +1459,8 @@ getWithoutCheck <- function (sym, env)
 }
 
 
-private.check <- eval(bquote(function (x, n = 4L)
+private.check <- eval(bquote(
+function (x, n = .(if (R.preserves.active.bindings) 4L else 3L))
 {
     # print(sys.calls())
     # print(sys.frames())
@@ -1071,7 +1485,7 @@ private.check <- eval(bquote(function (x, n = 4L)
     # tmp <- sys.function(sys.parent(n - 1L)) ; print(tmp)
     # for (N in seq.int(1L, length.out = sys.nframe() - 1)) {
     #     cat("sys.function(sys.parents()[[sys.nframe() - ", N, "]]) = ", sep = "")
-    #     tmp <- sys.function(print(sys.parents()[[print(sys.nframe()) - N]]))
+    #     tmp <- sys.function(print(sys.parents()[[sys.nframe() - N]]))
     #     print(tmp)
     # }
     (n <- sys.nframe() - n) > 0L &&
@@ -1080,24 +1494,27 @@ private.check <- eval(bquote(function (x, n = 4L)
     # sys.nframe() >= n &&
     #     is(sys.function(-n), .) &&
     #     identical(sys.function(-n)@boundTo, x)
-}))
+}
+))
 
 
-protected.check <- eval(bquote(function (x, n = 4L)
+protected.check <- eval(bquote(
+function (x, n = .(if (R.preserves.active.bindings) 4L else 3L))
 {
     (n <- sys.nframe() - n) > 0L &&
         is(sys.function(n <- sys.parents()[[n]]), .(IrisMethod@className)) &&
         {
             env <- sys.function(n)@boundTo
-            done <- FALSE
+            valid <- FALSE
             while (!identical(env, emptyenv())) {
-                if (done <- identical(env, x))
+                if (valid <- identical(env, x))
                     break
                 env <- parent.env(env)
             }
-            done
+            valid
         }
-}))
+}
+))
 
 
 assign(paste0("toString.", attr(IrisObject, "className")),
@@ -1155,348 +1572,69 @@ else quote({
     for (method in def@methods) {
 
 
-        # method <- x@methods$copy ; stop("remove this")
-        method <- IrisMethod(method = method, boundTo = .Object)
-..(
-if (R.preserves.active.bindings) bquote2({
-        needs.an.active.binding <- FALSE
-        if (method@is.property) {
-            needs.an.active.binding <- TRUE
-            fun <- function(value) {
-                if (missing(value))
-                    method()
-                else method(value)
-            }
-            do_lock <- FALSE
-        } else {
-            fun <- function(value) VALUE
-            do_lock <- TRUE
-        }
-        switch (method@access,
-        private = {
-            needs.an.active.binding <- TRUE
-            body(fun) <- substitute({
-                if (private.check(.Object))
-                    funBody
-                else stop(toString(method), " is private", call. = FALSE)
-            }, list(funBody = body(fun)))
-        },
-        protected = {
-            needs.an.active.binding <- TRUE
-            body(fun) <- substitute({
-                if (protected.check(.Object))
-                    funBody
-                else stop(toString(method), " is protected", call. = FALSE)
-            }, list(funBody = body(fun)))
-        },
-        public = {
-        },
-        {
-            stop("invalid method@access; should never happen, please report!")
-        })
-        if (needs.an.active.binding) {
-            env <- list2env(list(.Object = .Object, method = method), parent = this.namespace)
-            if (method@is.active) {
-                makeActiveBinding("VALUE", method, env)
-            } else env$VALUE <- method
-            lockEnvironment(env, bindings = TRUE)
-            environment(fun) <- env
-            makeActiveBinding(method@name, fun, .Object)
-        } else if (method@is.active) {
-            makeActiveBinding(method@name, method, .Object)
-        } else {
-            assign(method@name, method, envir = .Object)
-        }
-        if (do_lock)
-            lockBinding(method@name, .Object)
-})
-else bquote2({
-        if (method@is.property || method@is.active) {
-            fun <- function(value) {
-                if (missing(value))
-                    VALUE()
-                else VALUE(value)
-            }
-        } else {
+        if (method@static) {
             fun <- function(value) NULL
             body(fun) <- substitute({
+                x <- .getIrisClass(Class)
                 if (missing(value))
-                    VALUE
-                else stop(msg, call. = FALSE)
+                    x$name
+                else x$name <- value
             }, list(
-                msg = paste0("cannot change value of locked binding for '", method@name, "'")
+                Class = class(.Object)[[1L]],
+                name = as.symbol(method@name)
             ))
+            environment(fun) <- this.namespace
+            assign(method@name, fun, envir = .Object)
+            lockBinding(method@name, .Object)
+            next
         }
-        switch (method@access,
-        private = {
-            body(fun) <- substitute({
-                if (private.check(.Object))
-                    funBody
-                else stop(toString(method), " is private", call. = FALSE)
-            }, list(funBody = body(fun)))
-        },
-        protected = {
-            body(fun) <- substitute({
-                if (protected.check(.Object))
-                    funBody
-                else stop(toString(method), " is protected", call. = FALSE)
-            }, list(funBody = body(fun)))
-        },
-        public = {
-        },
-        {
-            stop("invalid method@access; should never happen, please report!")
-        })
-        env <- list2env(list(.Object = .Object, VALUE = method), parent = this.namespace)
-        lockEnvironment(env, bindings = TRUE)
-        environment(fun) <- env
-        assign(method@name, fun, envir = .Object)
-        lockBinding(method@name, .Object)
-})
-)
 
+
+        giveBoundMethod(.Object, method)
     }
 
 
     for (field in def@fields) {
-        VALUE <- field@value
-        env <- list2env(list(.Object = .Object, VALUE = VALUE), parent = this.namespace)
-        lockBinding(".Object", env)
-        fun <- function(value) NULL
-..(
-if (R.preserves.active.bindings) bquote2({
-        needs.an.active.binding <- FALSE
 
 
-        # if we're locking the field, we don't need do_assign
-        if (do_lock <- field@final && field@hasValue) {
-
-
-        # if we're not locking the field, we need do_assign
-        } else {
-            if (identical(field@className, .(`packageSlot<-`("ANY", "methods")))) {
-                do_assign <- quote(VALUE <<- value)
-            } else {
-                needs.an.active.binding <- TRUE
-                do_assign <- substitute({
-                    valueClass <- class(value)
-                    if (.identC(cl, valueClass)) {
-                        VALUE <<- value
-                    } else {
-                        ok <- possibleExtends(valueClass, cl)
-                        # if (isFALSE(ok))
-                        #     stop(sprintf("assignment of an object of class %s is not valid for field %s in %s; is(value, \"%s\") is not TRUE",
-                        #         paste(dQuote(valueClass), collapse = ", "),
-                        #         sQuote(name), string, cl))
-                        # else if (isTRUE(ok))
-                        #     VALUE <<- value
-                        # else VALUE <<- as(value, cl, strict = FALSE, ext = ok)
-                        if (isFALSE(ok))
-                            stop(sprintf("assignment of an object of class %s is not valid for field %s in %s; is(value, \"%s\") is not TRUE",
-                                paste(dQuote(valueClass), collapse = ", "),
-                                sQuote(name), toString(.Object), cl))
-                        VALUE <<- value
-                    }
-                }, list(
-                    cl     = field@className,
-                    name   = field@name
-                ))
-            }
-        }
-
-
-        if (field@final) {
-            if (field@hasValue) {
-                body(fun) <- substitute({
-                    if (missing(value))
-                        VALUE
-                    else stop(cannot.change.value.msg, call. = FALSE)
-                }, list(
-                    cannot.change.value.msg = paste0("cannot change value of final field '", field@name, "'")
-                ))
-                lockBinding("VALUE", env)
-            } else {
-                needs.an.active.binding <- TRUE
-                body(fun) <- substitute({
-                    if (missing(value)) {
-                        if (initialized)
-                            VALUE
-                        else stop(not.init.msg, toString(.Object), "> is not initialized", call. = FALSE)
-                    }
-                    else if (initialized)
-                        stop(cannot.change.value.msg, call. = FALSE)
-                    else {
-                        initialized <<- TRUE
-                        do_assign
-                        lockEnvironment(env, bindings = TRUE)
-                        lockBinding(name, .Object)
-                        invisible(VALUE)
-                    }
-                }, list(
-                    do_assign = do_assign,
-                    not.init.msg = paste0("<field \"", field@name, "\" of "),
-                    cannot.change.value.msg = paste0("cannot change value of final field '", field@name, "'"),
-                    env = env,
-                    name = field@name
-                ))
-                env$initialized <- FALSE
-            }
-        } else {
+        if (field@static) {
+            fun <- function(value) NULL
             body(fun) <- substitute({
+                irisClass <- .getIrisClass(Class)
+                envir <- environment(get(name, envir = irisClass, inherits = FALSE))
+                switch(envir$access,
+                private = {
+                    if (!private.static.check(Class)) {
+                        stop(msg, toString(irisClass), "> is private", call. = FALSE)
+                    }
+                },
+                protected = {
+                    if (!protected.static.check(Class)) {
+                        stop(msg, toString(irisClass), "> is protected", call. = FALSE)
+                    }
+                },
+                public = {
+                },
+                {
+                    stop("invalid 'access'; should never happen, please report!")
+                })
                 if (missing(value))
-                    VALUE
-                else do_assign
-            }, list(do_assign = do_assign))
-        }
-        switch (field@access,
-        private = {
-            needs.an.active.binding <- TRUE
-            body(fun) <- substitute({
-                if (private.check(.Object))
-                    funBody
-                else stop(msg, toString(.Object), "> is private", call. = FALSE)
+                    envir$do_get()
+                else envir$do_assign(value)
             }, list(
-                funBody = body(fun),
-                msg = paste0("<field \"", field@name, "\" of ")
+                Class = class(.Object)[[1L]],
+                name = field@name,
+                msg = paste0("<field \"", field@name, "\" of "),
+                funBody = body(fun)
             ))
-        },
-        protected = {
-            needs.an.active.binding <- TRUE
-            body(fun) <- substitute({
-                if (protected.check(.Object))
-                    funBody
-                else stop(msg, toString(.Object), "> is protected", call. = FALSE)
-            }, list(
-                funBody = body(fun),
-                msg = paste0("<field \"", field@name, "\" of ")
-            ))
-        },
-        public = {
-        },
-        {
-            stop("invalid field@access; should never happen, please report!")
-        })
-        if (needs.an.active.binding) {
-            lockEnvironment(env)
-            environment(fun) <- env
-            makeActiveBinding(field@name, fun, .Object)
-        } else {
-            assign(field@name, VALUE, .Object)
-        }
-        if (do_lock)
+            environment(fun) <- this.namespace
+            assign(field@name, fun, envir = .Object)
             lockBinding(field@name, .Object)
-})
-else bquote2({
-        # if we're locking the field, we don't need do_assign
-        if (do_lock <- field@final && field@hasValue) {
-
-
-        # if we're not locking the field, we need do_assign
-        } else {
-            if (identical(field@className, .(`packageSlot<-`("ANY", "methods")))) {
-                do_assign <- quote(VALUE <<- value)
-            } else {
-                do_assign <- substitute({
-                    valueClass <- class(value)
-                    if (.identC(cl, valueClass)) {
-                        VALUE <<- value
-                    } else {
-                        ok <- possibleExtends(valueClass, cl)
-                        # if (isFALSE(ok))
-                        #     stop(sprintf("assignment of an object of class %s is not valid for field %s in %s; is(value, \"%s\") is not TRUE",
-                        #         paste(dQuote(valueClass), collapse = ", "),
-                        #         sQuote(name), string, cl))
-                        # else if (isTRUE(ok))
-                        #     VALUE <<- value
-                        # else VALUE <<- as(value, cl, strict = FALSE, ext = ok)
-                        if (isFALSE(ok))
-                            stop(sprintf("assignment of an object of class %s is not valid for field %s in %s; is(value, \"%s\") is not TRUE",
-                                paste(dQuote(valueClass), collapse = ", "),
-                                sQuote(name), toString(.Object), cl))
-                        VALUE <<- value
-                    }
-                }, list(
-                    cl     = field@className,
-                    name   = field@name
-                ))
-            }
+            next
         }
 
 
-        if (field@final) {
-            if (field@hasValue) {
-                body(fun) <- substitute({
-                    if (missing(value))
-                        VALUE
-                    else stop(cannot.change.value.msg, call. = FALSE)
-                }, list(
-                    cannot.change.value.msg = paste0("cannot change value of final field '", field@name, "'")
-                ))
-                lockBinding("VALUE", env)
-            } else {
-                body(fun) <- substitute({
-                    if (missing(value)) {
-                        if (initialized)
-                            VALUE
-                        else stop(not.init.msg, toString(.Object), "> is not initialized", call. = FALSE)
-                    }
-                    else if (initialized)
-                        stop(cannot.change.value.msg, call. = FALSE)
-                    else {
-                        initialized <<- TRUE
-                        do_assign
-                        lockEnvironment(env, bindings = TRUE)
-                        lockBinding(name, .Object)
-                        invisible(VALUE)
-                    }
-                }, list(
-                    do_assign = do_assign,
-                    not.init.msg = paste0("<field \"", field@name, "\" of "),
-                    cannot.change.value.msg = paste0("cannot change value of final field '", field@name, "'"),
-                    env = env,
-                    name = field@name
-                ))
-                env$initialized <- FALSE
-            }
-        } else {
-            body(fun) <- substitute({
-                if (missing(value))
-                    VALUE
-                else do_assign
-            }, list(do_assign = do_assign))
-        }
-        switch (field@access,
-        private = {
-            body(fun) <- substitute({
-                if (private.check(.Object))
-                    funBody
-                else stop(msg, toString(.Object), "> is private", call. = FALSE)
-            }, list(
-                funBody = body(fun),
-                msg = paste0("<field \"", field@name, "\" of ")
-            ))
-        },
-        protected = {
-            body(fun) <- substitute({
-                if (protected.check(.Object))
-                    funBody
-                else stop(msg, toString(.Object), "> is protected", call. = FALSE)
-            }, list(
-                funBody = body(fun),
-                msg = paste0("<field \"", field@name, "\" of ")
-            ))
-        },
-        public = {
-        },
-        {
-            stop("invalid field@access; should never happen, please report!")
-        })
-        lockEnvironment(env)
-        environment(fun) <- env
-        assign(field@name, fun, envir = .Object)
-        lockBinding(field@name, .Object)
-})
-)
+        giveField(.Object, field)
     }
     lockEnvironment(.Object)
     .Object
